@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}拼缸出库专页{% endblock %}
+{% block content %}
+{% if error %}<div class="error-box">{{ error }}</div>{% endif %}
+
+<div class="panel">
+  <div class="ob-actions" style="justify-content:space-between">
+    <div>
+      <h2 style="margin-bottom:0.2rem">浸染拼缸出库单</h2>
+      <p class="hint" style="margin-bottom:0">
+        一单挂多口<strong>同坊可染色缸</strong>；计划米数为各缸最新一笔浸染布米之和以内；
+        主管出库时逐缸复核电位门槛（最新电位 ≤ -500 mV），任一缸不过整单拒绝、不半出库。
+      </p>
+    </div>
+    {% if not user.is_superuser %}
+    <form method="get" action="/outbound/new">
+      <button type="submit" class="btn-ghost">＋ 新建出库单</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="chips" style="margin-top:1rem" role="toolbar" aria-label="工坊筛选">
+    <a class="chip {{ 'on' if filter_workshop is none }}" href="/outbound">全部工坊</a>
+    {% for w in workshops %}
+    <a class="chip {{ 'on' if filter_workshop == w.id }}" href="/outbound?workshop={{ w.id }}">
+      {{ w.name }}
+      <span class="dyeable-count">可染色 {{ dyeable_counts.get(w.id, 0) }}</span>
+    </a>
+    {% endfor %}
+  </div>
+
+  <table class="ob-table">
+    <thead>
+      <tr>
+        <th>工坊</th><th>出库号</th><th>计划米数</th><th>挂缸</th><th>状态</th>
+        <th>开单人</th><th>建单时间</th><th>出库时间</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in orders %}
+      <tr>
+        <td>{{ o.workshopName }}</td>
+        <td><strong>{{ o.code }}</strong></td>
+        <td>{{ o.plannedMeters }} m</td>
+        <td>{{ o.lines | length }} 口（上限 {{ o.capMeters }} m）</td>
+        <td>
+          <span class="badge {{ 'badge-out' if o.status == 'out' else 'badge-grouping' }}">
+            {{ o.statusLabel }}
+          </span>
+        </td>
+        <td>{{ o.creator }}</td>
+        <td>{{ o.createdAt }}</td>
+        <td>{{ o.outAt or '—' }}</td>
+        <td><a href="/outbound/{{ o.id }}">查看{{ '／出库' if o.status == 'grouping' and user.is_superuser else ('／编辑' if o.status == 'grouping' else '') }}</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" style="text-align:center;color:#6b7c85;padding:1.2rem">暂无出库单。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="hint" style="margin-top:1rem;font-size:0.82rem">
+    口径说明：本页「可染色 N」与还原台去重计数、挂缸选择、出库复核完全一致——
+    缸状态为可染色且最新一笔浸染电位 ≤ -500 mV。
+  </p>
+</div>
+{% endblock %}

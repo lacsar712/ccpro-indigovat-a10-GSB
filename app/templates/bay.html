@@ -13,8 +13,11 @@
         class="chip"
         :class="{ on: filterWs === w.id }"
         @click="setFilter(w.id)"
-        x-text="w.name"
-      ></button>
+      >
+        <span x-text="w.name"></span>
+        <span class="dyeable-count" x-text="'可染色 ' + w.dyeableCount"
+              title="与拼缸出库专页可选缸同一口径：状态可染色且最新电位 ≤ -500 mV"></span>
+      </button>
     </template>
   </div>
 
@@ -36,6 +39,8 @@
         <div class="status-label">
           <span class="status-dot"></span>
           <span x-text="v.statusLabel"></span>
+          <span x-show="v.status === 'ready' && !v.dyeable"
+                style="color:#f3c27a;margin-left:0.3rem" title="最新读数已不满足 ≤ -500 mV，出库专页不可选、出库复核会拒绝">门槛失效</span>
         </div>
         <svg class="spark" width="72" height="28" viewBox="0 0 72 28" aria-hidden="true">
           <polyline

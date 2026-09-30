@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.db import Base, SessionLocal, engine
-from app.routers import auth, pages
+from app.routers import auth, outbound, pages
 from app.seed import ensure_seed_data
 
 
@@ -36,4 +36,5 @@ if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 app.include_router(auth.router)
+app.include_router(outbound.router)
 app.include_router(pages.router)

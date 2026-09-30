@@ -281,6 +281,69 @@
       color: rgba(216, 235, 232, 0.62);
       text-align: center;
     }
+    .topnav { display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap; }
+    .topnav-link {
+      font-size: 0.88rem;
+      color: var(--foam);
+      text-decoration: none;
+      padding: 0.32rem 0.85rem;
+      border-radius: 999px;
+      border: 1px solid rgba(216, 235, 232, 0.35);
+      background: rgba(11, 28, 44, 0.3);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .topnav-link:hover { background: rgba(216, 235, 232, 0.12); }
+    .topnav-link.on {
+      background: linear-gradient(135deg, rgba(61, 139, 156, 0.9), rgba(31, 77, 107, 0.95));
+      border-color: rgba(216, 235, 232, 0.65);
+    }
+    .ob-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .ob-table th, .ob-table td {
+      text-align: left;
+      padding: 0.55rem 0.6rem;
+      border-bottom: 1px dashed #c5d8d6;
+      vertical-align: middle;
+    }
+    .ob-table th { color: #1f4d6b; font-weight: 650; }
+    .badge {
+      display: inline-block;
+      font-size: 0.76rem;
+      padding: 0.12rem 0.6rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+    }
+    .badge-grouping { background: #e3edf2; color: #1f4d6b; border-color: #b7d0dc; }
+    .badge-out { background: #dcf2e8; color: #14664b; border-color: #a8d9c2; }
+    .vat-pick {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.55rem;
+      padding: 0.55rem 0.7rem;
+      border: 1px solid #c2d6d4;
+      border-radius: 12px;
+      margin-bottom: 0.5rem;
+      background: #fff;
+    }
+    .vat-pick.locked { background: #f6f1ec; border-color: #e0c9b8; }
+    .vat-pick.bad { background: #fde8e8; border-color: #f0b4b4; }
+    .vat-pick input { margin: 0.2rem 0 0; width: auto; }
+    .vat-pick .vp-meta { font-size: 0.82rem; color: #4a6670; }
+    .vat-pick .vp-cap { font-weight: 650; color: #1f4d6b; }
+    .vat-pick.disabled-pick { opacity: 0.62; }
+    .ob-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+    .btn-danger {
+      background: #8c2f2f !important;
+      border-color: #8c2f2f !important;
+      color: #fff !important;
+      width: auto !important;
+    }
+    .btn-ghost {
+      background: transparent !important;
+      border: 1px solid #1f4d6b !important;
+      color: #1f4d6b !important;
+      width: auto !important;
+    }
+    .dyeable-count { font-size: 0.8rem; color: #14664b; font-weight: 650; margin-left: 0.35rem; }
   </style>
 </head>
 <body>
@@ -290,9 +353,13 @@
       <div>
         <h1>染缸还原台</h1>
         <p class="sub">IndigoVat · 按缸位盯氧化还原，点开记浸染与改状态</p>
+        <nav class="topnav" aria-label="主导航">
+          <a href="/" class="topnav-link {{ 'on' if active == 'bay' else '' }}">还原台</a>
+          <a href="/outbound" class="topnav-link {{ 'on' if active == 'outbound' else '' }}">拼缸出库专页</a>
+        </nav>
       </div>
       <div class="user-pill">
-        <span>{{ user.username }}</span>
+        <span>{{ user.username }}{% if user.is_superuser %}（主管）{% else %}（染缸工）{% endif %}</span>
         <form method="post" action="/logout">
           <button type="submit">退出</button>
         </form>

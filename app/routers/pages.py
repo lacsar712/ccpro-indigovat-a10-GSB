@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth import get_current_user
 from app.db import get_db
 from app.models import DipLot, Vat, Workshop
-from app.services.vat_rules import VatRuleError, validate_vat_status_change
+from app.services.vat_rules import (
+    VatRuleError,
+    dyeable_counts_by_workshop,
+    is_dyeable,
+    latest_lot_of,
+    validate_vat_status_change,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -61,6 +67,8 @@ def _vat_payload(vat: Vat) -> dict:
     chronological = lots
     latest = lots[-1] if lots else None
     recent = list(reversed(lots[-8:]))  # 展开区展示近几笔
+    # 可染色标记走全系统唯一口径，供还原台与拼缸专页对账。
+    dyeable = is_dyeable(vat, latest)
     return {
         "id": vat.id,
         "code": vat.code,
@@ -68,6 +76,7 @@ def _vat_payload(vat: Vat) -> dict:
         "volumeL": float(vat.volumeL),
         "status": vat.status,
         "statusLabel": STATUS_LABELS.get(vat.status, vat.status),
+        "dyeable": dyeable,
         "workshopId": vat.workshop_id,
         "workshopName": vat.workshop.name if vat.workshop else "",
         "lastRedox": float(latest.redoxMv) if latest and latest.redoxMv is not None else None,
@@ -96,6 +105,8 @@ def _bay_context(
 ):
     # 始终下发全部缸位；工坊仅作前端 chip 筛选，避免切回「全部」时缺数据
     workshops = db.query(Workshop).order_by(Workshop.name).all()
+    # 可染色缸去重数：与拼缸专页可选缸、出库复核同一口径。
+    dyeable_counts = dyeable_counts_by_workshop(db)
     vats = (
         db.query(Vat)
         .options(joinedload(Vat.workshop), joinedload(Vat.lots))
@@ -105,7 +116,15 @@ def _bay_context(
     return {
         "request": request,
         "user": user,
-        "workshops": [{"id": w.id, "name": w.name, "region": w.region} for w in workshops],
+        "workshops": [
+            {
+                "id": w.id,
+                "name": w.name,
+                "region": w.region,
+                "dyeableCount": dyeable_counts.get(w.id, 0),
+            }
+            for w in workshops
+        ],
         "vats": [_vat_payload(v) for v in vats],
         "filter_workshop": workshop_id,
         "selected_vat": selected_vat,
@@ -139,6 +158,9 @@ async def bay_vat_status(
     user = _need_login(request, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    # 先锁裸缸行再读关联（理由同登记浸染），与出库逐缸复核互斥。
+    if db.query(Vat.id).filter(Vat.id == pk).with_for_update().first() is None:
+        return RedirectResponse("/", status_code=303)
     item = (
         db.query(Vat)
         .options(joinedload(Vat.workshop), joinedload(Vat.lots))
@@ -150,7 +172,7 @@ async def bay_vat_status(
         return RedirectResponse("/", status_code=303)
     error = None
     try:
-        latest = item.latest_lot()
+        latest = latest_lot_of(item)
         validate_vat_status_change(item, status, latest)
         item.status = status
         db.commit()
@@ -179,7 +201,16 @@ async def bay_log_lot(
     user = _need_login(request, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    item = db.get(Vat, pk)
+    # 先锁裸缸行（FOR UPDATE 不能配 joinedload 外连接），再在同事务读关联，
+    # 锁持续到提交：与拼缸出库的逐缸复核互斥。
+    if db.query(Vat.id).filter(Vat.id == pk).with_for_update().first() is None:
+        return RedirectResponse("/", status_code=303)
+    item = (
+        db.query(Vat)
+        .options(joinedload(Vat.workshop), joinedload(Vat.lots))
+        .filter(Vat.id == pk)
+        .first()
+    )
     ws = int(workshop) if workshop.strip() else None
     if not item:
         return RedirectResponse("/", status_code=303)

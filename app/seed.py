@@ -55,14 +55,14 @@ def ensure_seed_data(db: Session) -> None:
         code="V-01",
         dyeType="土靛",
         volumeL=Decimal("800.00"),
-        status=Vat.STATUS_REDUCING,
+        status=Vat.STATUS_READY,
     )
     v2 = Vat(
         workshop_id=w1.id,
         code="V-02",
         dyeType="合成靛",
         volumeL=Decimal("600.00"),
-        status=Vat.STATUS_IDLE,
+        status=Vat.STATUS_READY,
     )
     v3 = Vat(
         workshop_id=w2.id,
@@ -114,7 +114,8 @@ def ensure_seed_data(db: Session) -> None:
             v2.id,
             [
                 (6, "8.00", None),
-                (1, "12.00", None),
+                (3, "10.50", "-480.00"),
+                (1, "12.00", "-505.00"),
             ],
         )
     )

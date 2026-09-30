@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}出库单 {{ order.code }}{% endblock %}
+{% block content %}
+{% if error %}<div class="error-box">{{ error }}</div>{% endif %}
+
+{% if order %}
+<div class="panel">
+  <div class="ob-actions" style="justify-content:space-between">
+    <div>
+      <h2 style="margin-bottom:0.2rem">出库单 {{ order.code }}</h2>
+      <p class="hint" style="margin-bottom:0">
+        {{ order.workshopName }} · 计划 {{ order.plannedMeters }} m · 开单人 {{ order.creator }} ·
+        建单 {{ order.createdAt }}
+      </p>
+    </div>
+    <span class="badge {{ 'badge-out' if order.status == 'out' else 'badge-grouping' }}">
+      {{ order.statusLabel }}
+    </span>
+  </div>
+
+  <table class="ob-table" style="margin-top:1rem">
+    <thead>
+      <tr><th>染缸</th><th>染料</th><th>最新浸染布米（上限来源）</th><th>最新电位</th></tr>
+    </thead>
+    <tbody>
+      {% for it in order.lines %}
+      <tr>
+        <td><strong>{{ it.code }}</strong></td>
+        <td>{{ it.dyeType }}</td>
+        <td>{{ it.latestMeters if it.latestMeters is not none else '—' }} m</td>
+        <td>{{ it.latestRedox ~ ' mV' if it.latestRedox is not none else '无电位' }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td colspan="2" style="text-align:right"><strong>最新布米合计（计划上限）</strong></td>
+        <td><strong>{{ order.capMeters }} m</strong></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="hint" style="margin-top:0.9rem">
+    出库口径与还原台改状态同源：每口缸当前状态须为可染色、最新一笔浸染电位 ≤ -500 mV。
+    任一口缸不达标，整单拒绝，绝不半出库；两人同时点出库至多一人成功。
+  </p>
+
+  <div class="ob-actions" style="margin-top:0.6rem">
+    {% if order.status == 'grouping' and is_supervisor %}
+    <form method="post" action="/outbound/{{ order.id }}/ship"
+          onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='出库确认中…';">
+      <button type="submit" class="btn-danger">确认已出库（逐缸复核电位门槛）</button>
+    </form>
+    {% elif order.status == 'grouping' %}
+    <span class="hint" style="color:#1f4d6b">组单中，等待主管核对米数后出库。</span>
+    {% else %}
+    <span class="hint" style="color:#14664b">已于 {{ order.outAt }} 整单出库完成。</span>
+    {% endif %}
+    <a href="/outbound" class="btn-ghost"
+       style="padding:0.55rem 1rem;border-radius:8px;text-decoration:none;display:inline-block">返回专页</a>
+  </div>
+</div>
+{% else %}
+<div class="panel"><p class="hint">出库单不存在或已被删除。</p>
+<a href="/outbound">返回专页</a></div>
+{% endif %}
+{% endblock %}

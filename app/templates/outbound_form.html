@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑出库单 ' + order.code if order else '新建拼缸出库单' }}{% endblock %}
+{% block content %}
+<div
+  class="panel"
+  x-data="outboundForm()"
+  x-init="init()"
+>
+  <h2>{{ '编辑出库单 ' + order.code if order else '新建拼缸出库单' }}</h2>
+  <p class="hint">
+    染缸工组单：只能挂<strong>同一工坊</strong>且当前<strong>可染色</strong>（最新电位 ≤ -500 mV）的缸；
+    同一缸在未出库单之间互斥。计划米数为正，且不超过所选各缸<strong>最新一笔浸染布米合计</strong>。
+  </p>
+
+  {% if error %}<div class="error-box">{{ error }}</div>{% endif %}
+
+  <form method="post" action="{{ ('/outbound/' + order.id|string + '/edit') if order else '/outbound' }}">
+    <div class="panel-grid">
+      <div>
+        <label>工坊
+          <select name="workshop_id" required x-model="workshopId" @change="onWorkshopChange()">
+            <option value="" disabled>请选择工坊</option>
+            {% for w in workshops %}
+            <option value="{{ w.id }}">{{ w.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>出库号（同坊唯一）
+          <input type="text" name="code" required maxlength="40" value="{{ form_code }}" placeholder="例如 CK-20260929-01">
+        </label>
+        <label>计划出库米数（正数，≤ 明细最新布米合计 <span x-text="cap().toFixed(2)"></span> m）
+          <input
+            type="number" name="plannedMeters" step="0.01" min="0.01" required
+            value="{{ form_planned }}" placeholder="例如 60"
+            :max="cap().toFixed(2)"
+          >
+        </label>
+
+        <h3 style="font-size:1rem;margin:0.8rem 0 0.4rem;color:#1f4d6b">
+          本坊可染色缸（已选 <span x-text="selectedVats().length"></span> 口，合计上限
+          <span x-text="cap().toFixed(2)"></span> m）
+        </h3>
+        <template x-for="v in workshopVats()" :key="v.id">
+          <label
+            class="vat-pick"
+            :class="{
+              bad: v.notDyeable,
+              locked: v.occupiedElsewhere && !isPicked(v.id),
+              'disabled-pick': v.occupiedElsewhere && !isPicked(v.id),
+            }"
+          >
+            <input
+              type="checkbox"
+              name="vat_ids"
+              :value="v.id"
+              :checked="isPicked(v.id)"
+              :disabled="v.occupiedElsewhere && !isPicked(v.id)"
+              @change="toggleVat(v.id, $event.target.checked)"
+            >
+            <span>
+              <strong x-text="v.code"></strong>
+              <span class="vp-meta" x-text="' · ' + v.dyeType"></span>
+              <div class="vp-meta">
+                最新浸染 <span class="vp-cap" x-text="v.latestMeters.toFixed(2) + ' m'"></span>
+                ·
+                <span x-text="v.latestRedox === null ? '无电位' : (v.latestRedox + ' mV')"></span>
+                <span x-show="v.occupiedElsewhere && !isPicked(v.id)" style="color:#8a5a2b">（已挂在其它未出库单，互斥）</span>
+                <span x-show="v.notDyeable" style="color:#8b1e1e">（已不再可染色，须先在还原台处理，保存会被拒）</span>
+              </div>
+            </span>
+          </label>
+        </template>
+        <p x-show="workshopId && workshopVats().length === 0" class="hint" style="color:#8b1e1e">
+          本坊当前没有可染色缸（口径与还原台一致：状态可染色且最新电位 ≤ -500 mV）。
+        </p>
+
+        <div class="ob-actions" style="margin-top:1rem">
+          <button type="submit">{{ '保存修改' if order else '创建组单' }}</button>
+          <a href="{{ ('/outbound/' + order.id|string) if order else '/outbound' }}" class="btn-ghost"
+             style="padding:0.55rem 1rem;border-radius:8px;text-decoration:none;display:inline-block">取消</a>
+        </div>
+      </div>
+
+      <div>
+        <h3 style="font-size:1rem;margin:0 0 0.5rem;color:#1f4d6b">规则与互斥</h3>
+        <ul class="lot-list" style="font-size:0.86rem">
+          <li>· 明细只能挂与单头<strong>同一工坊</strong>的可染色缸，跨坊挂缸直接拒绝。</li>
+          <li>· 同缸在任一<strong>未出库单</strong>中不可重复（跨单互斥，数据库兜底）。</li>
+          <li>· 计划出库米数为正，上限 = 各缸<strong>最新一笔浸染布米之和</strong>。</li>
+          <li>· 出库号在<strong>同一工坊内唯一</strong>，新建与更新同口径校验。</li>
+          <li>· 已出库单据不可再编辑；出库由主管在明细页执行。</li>
+        </ul>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  function outboundForm() {
+    return {
+      workshopId: {{ filter_workshop if filter_workshop is not none else 'null' }},
+      vats: {{ choices_json | tojson }},
+      picked: [],
+      init() {
+        this.vats.forEach(v => { if (v.selected) this.picked.push(v.id); });
+      },
+      onWorkshopChange() {
+        // 切工坊时清掉别坊的已选，杜绝跨坊挂缸。
+        this.picked = this.picked.filter(id => {
+          const v = this.vats.find(x => x.id === id);
+          return v && v.workshopId === Number(this.workshopId);
+        });
+      },
+      workshopVats() {
+        if (!this.workshopId) return [];
+        const ws = Number(this.workshopId);
+        return this.vats.filter(v => v.workshopId === ws);
+      },
+      selectedVats() {
+        return this.workshopVats().filter(v => this.picked.includes(v.id));
+      },
+      isPicked(id) { return this.picked.includes(id); },
+      toggleVat(id, on) {
+        if (on) {
+          if (!this.picked.includes(id)) this.picked.push(id);
+        } else {
+          this.picked = this.picked.filter(x => x !== id);
+        }
+      },
+      cap() {
+        return this.selectedVats().reduce((s, v) => s + v.latestMeters, 0);
+      },
+    };
+  }
+</script>
+{% endblock %}
