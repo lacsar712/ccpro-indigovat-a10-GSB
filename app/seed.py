@@ -50,19 +50,21 @@ def ensure_seed_data(db: Session) -> None:
     db.add_all([w1, w2])
     db.flush()
 
+    # 蓝靛湾一号坊两口同坊可染色缸（v1/v2 均 ready 且最新电位 <= -500），
+    # 供拼缸出库单一单挂多口；清水江二号坊一口可染色（跨坊对照）、一口未过门槛。
     v1 = Vat(
         workshop_id=w1.id,
         code="V-01",
         dyeType="土靛",
         volumeL=Decimal("800.00"),
-        status=Vat.STATUS_REDUCING,
+        status=Vat.STATUS_READY,
     )
     v2 = Vat(
         workshop_id=w1.id,
         code="V-02",
         dyeType="合成靛",
         volumeL=Decimal("600.00"),
-        status=Vat.STATUS_IDLE,
+        status=Vat.STATUS_READY,
     )
     v3 = Vat(
         workshop_id=w2.id,
@@ -113,8 +115,9 @@ def ensure_seed_data(db: Session) -> None:
         lots(
             v2.id,
             [
-                (6, "8.00", None),
-                (1, "12.00", None),
+                (9, "10.00", "-430.00"),
+                (5, "14.00", "-495.00"),
+                (2, "16.50", "-515.00"),
             ],
         )
     )

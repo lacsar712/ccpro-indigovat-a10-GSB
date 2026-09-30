@@ -6,9 +6,9 @@ services:
       POSTGRES_USER: indigovat
       POSTGRES_PASSWORD: indigovat
     ports:
-      - "6310:5432"
+      - "6320:5432"
     volumes:
-      - indigovat_4910_6310_pg:/var/lib/postgresql/data
+      - indigovat_4920_6320_pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U indigovat -d indigovat"]
       interval: 5s
@@ -19,7 +19,7 @@ services:
   web:
     build: .
     ports:
-      - "4910:4720"
+      - "4920:4720"
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
@@ -32,4 +32,4 @@ services:
         condition: service_healthy
 
 volumes:
-  indigovat_4910_6310_pg:
+  indigovat_4920_6320_pg:

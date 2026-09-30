@@ -6,17 +6,24 @@
   x-init="init()"
 >
   <div class="chips" role="toolbar" aria-label="工坊筛选">
-    <button type="button" class="chip" :class="{ on: filterWs === null }" @click="setFilter(null)">全部缸位</button>
+    <button type="button" class="chip" :class="{ on: filterWs === null }" @click="setFilter(null)">
+      全部缸位 · <span x-text="dyeableTotal"></span> 口可染色
+    </button>
     <template x-for="w in workshops" :key="w.id">
       <button
         type="button"
         class="chip"
         :class="{ on: filterWs === w.id }"
         @click="setFilter(w.id)"
-        x-text="w.name"
+        x-text="w.name + ' · ' + w.dyeableCount + ' 口可染色'"
       ></button>
     </template>
   </div>
+  <p class="dyeable-note">
+    可染色口径：状态为可染色且最新浸染批次电位 ≤ -500 mV，去重共
+    <strong x-text="filterWs === null ? dyeableTotal : (workshops.find(w => w.id === filterWs)?.dyeableCount ?? 0)"></strong>
+    口，与拼缸出库专页可选缸逐口对上。
+  </p>
 
   {% if error %}
   <div class="error-box">{{ error }}</div>
@@ -36,6 +43,7 @@
         <div class="status-label">
           <span class="status-dot"></span>
           <span x-text="v.statusLabel"></span>
+          <span class="dyeable-badge" x-show="dyeableIds.includes(v.id)" x-cloak>可拼缸出库</span>
         </div>
         <svg class="spark" width="72" height="28" viewBox="0 0 72 28" aria-hidden="true">
           <polyline
@@ -138,6 +146,8 @@
     return {
       workshops: {{ workshops | tojson }},
       vats: {{ vats | tojson }},
+      dyeableIds: {{ dyeable_ids | tojson }},
+      dyeableTotal: {{ dyeable_total }},
       filterWs: {{ filter_workshop if filter_workshop is not none else 'null' }},
       selectedId: {{ selected_vat if selected_vat is not none else 'null' }},
       init() {

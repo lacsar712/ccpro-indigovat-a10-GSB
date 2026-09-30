@@ -12,7 +12,11 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth import get_current_user
 from app.db import get_db
 from app.models import DipLot, Vat, Workshop
-from app.services.vat_rules import VatRuleError, validate_vat_status_change
+from app.services.vat_rules import (
+    VatRuleError,
+    validate_vat_status_change,
+    vat_is_dyeable,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -102,11 +106,28 @@ def _bay_context(
         .order_by(Vat.code)
         .all()
     )
+    # 可染色缸去重数：与拼缸出库专页可选缸、出库逐缸复核同一口径
+    # （vat_is_dyeable：status=ready 且最新浸染批次 redoxMv <= -500）
+    dyeable_vats = [v for v in vats if vat_is_dyeable(v)]
+    dyeable_ids = [v.id for v in dyeable_vats]
+    dyeable_counts: dict[int, int] = {}
+    for v in dyeable_vats:
+        dyeable_counts[v.workshop_id] = dyeable_counts.get(v.workshop_id, 0) + 1
     return {
         "request": request,
         "user": user,
-        "workshops": [{"id": w.id, "name": w.name, "region": w.region} for w in workshops],
+        "workshops": [
+            {
+                "id": w.id,
+                "name": w.name,
+                "region": w.region,
+                "dyeableCount": dyeable_counts.get(w.id, 0),
+            }
+            for w in workshops
+        ],
         "vats": [_vat_payload(v) for v in vats],
+        "dyeable_ids": dyeable_ids,
+        "dyeable_total": len(dyeable_ids),
         "filter_workshop": workshop_id,
         "selected_vat": selected_vat,
         "error": error,

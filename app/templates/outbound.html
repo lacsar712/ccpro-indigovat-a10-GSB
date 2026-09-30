@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}浸染拼缸出库{% endblock %}
+{% block content %}
+<div x-data="outboundPage()" x-init="init()">
+  {% if error %}
+  <div class="error-box">{{ error }}</div>
+  {% endif %}
+
+  <p class="dyeable-note">
+    口径对账：还原台可染色缸去重共 <strong>{{ dyeable_total }}</strong> 口，
+    本专页可选缸同口径同名单（状态可染色且最新电位 ≤ -500 mV）。
+    计划出库米数为正数，上限 = 明细各缸<strong>最新一笔浸染布米之和</strong>；
+    同一口缸在未出库单中<strong>互斥</strong>，出库时逐缸再过一次电位门槛，
+    任一缸失败整单拒绝、绝不半出库。
+  </p>
+
+  {% if not is_supervisor %}
+  <div class="panel" style="margin-bottom:1.25rem">
+    <h2>新建拼缸出库单</h2>
+    <p class="hint">染缸工组单：先选工坊，只挂同坊可染色缸；同坊出库号唯一。</p>
+    <form method="post" action="/outbound/orders" @submit="return validateCreate()">
+      <div class="panel-grid">
+        <div>
+          <label>工坊
+            <select name="workshop_id" required @change="ws = parseInt($event.target.value,10); selectedVats=[]">
+              <option value="" disabled selected>选择工坊…</option>
+              <template x-for="w in workshops" :key="w.id">
+                <option :value="w.id" x-text="w.name + '（' + (counts[w.id]||0) + ' 口可染色）'"></option>
+              </template>
+            </select>
+          </label>
+          <label>出库号（同坊唯一）
+            <input type="text" name="code" required maxlength="40" placeholder="例如 CK-20260930-01">
+          </label>
+          <label>计划出库米数（正数，≤ 明细米数合计）
+            <input type="number" name="plannedMeters" step="0.01" min="0.01" required
+                   x-model="planned" @input="planned = $event.target.value">
+          </label>
+          <p class="cap-hint">
+            勾选明细最新一笔布米之和：<strong x-text="selectedSum()"></strong> m
+            <span x-show="planned && Number(planned) > Number(selectedSum())" class="cap-over">
+              已超合计上限
+            </span>
+          </p>
+          <button type="submit">组单</button>
+        </div>
+        <div>
+          <h3 class="sub-h">挂缸明细（仅同坊可染色缸）</h3>
+          <ul class="pick-list">
+            <template x-for="v in availableVats()" :key="v.id">
+              <li>
+                <label class="pick-row">
+                  <input type="checkbox" name="vat_ids" :value="v.id"
+                         x-model.number="selectedVats">
+                  <span>
+                    <strong x-text="v.code"></strong>
+                    <span class="pick-meta" x-text="v.dyeType"></span>
+                  </span>
+                  <span class="pick-meters">
+                    最新 <span x-text="v.lastMeters"></span> m ·
+                    <span x-text="v.lastRedox === null ? '无电位' : (v.lastRedox + ' mV')"></span>
+                  </span>
+                </label>
+              </li>
+            </template>
+          </ul>
+          <p class="cap-hint" x-show="ws && availableVats().length === 0">
+            该工坊暂无可选可染色缸（可能全部已挂在未出库单中）。
+          </p>
+        </div>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="order-list">
+    <template x-for="o in orders" :key="o.id">
+      <div class="panel order-card" :class="{ shipped: !o.draft }"
+           :id="'order-' + o.id">
+        <div class="order-head">
+          <div>
+            <h2>
+              <span x-text="o.code"></span>
+              <span class="order-status" :class="o.draft ? 'st-draft' : 'st-shipped'"
+                    x-text="o.statusLabel"></span>
+            </h2>
+            <p class="hint">
+              <span x-text="o.workshopName"></span> · 开单人 <strong x-text="o.createdByName"></strong>
+              · 建单 <span x-text="o.createdAt"></span>
+              <template x-if="o.shippedAt"> · 出库 <span x-text="o.shippedAt"></span></template>
+            </p>
+          </div>
+          {% if is_supervisor %}
+          <form x-show="o.draft" method="post" :action="'/outbound/orders/' + o.id + '/ship'"
+                @submit="return confirmShip(o)" style="margin:0">
+            <button type="submit" class="ship-btn">确认已出库</button>
+          </form>
+          {% endif %}
+        </div>
+
+        <div class="order-meta-line">
+          <span>计划米数 <strong x-text="o.plannedMeters"></strong> m</span>
+          <span>明细最新浸染布米合计 <strong x-text="o.capacityMeters"></strong> m</span>
+          <span :class="o.plannedMeters > o.capacityMeters ? 'cap-over' : ''">
+            <template x-if="o.plannedMeters > o.capacityMeters">计划已超合计，需调整后才能出库</template>
+          </span>
+        </div>
+
+        <table class="item-table">
+          <thead>
+            <tr><th>染缸</th><th>染料</th><th>最新布米</th><th>最新电位</th><th>出库复核</th><th></th></tr>
+          </thead>
+          <tbody>
+            <template x-for="it in o.items" :key="it.itemId">
+              <tr :class="{ 'row-released': it.released }">
+                <td x-text="it.code"></td>
+                <td x-text="it.dyeType"></td>
+                <td x-text="it.lastMeters + ' m'"></td>
+                <td x-text="it.lastRedox === null ? '无电位' : (it.lastRedox + ' mV')"></td>
+                <td>
+                  <template x-if="it.released"><span class="ok-tag">已随单出库</span></template>
+                  <template x-if="!it.released && it.dyeable">
+                    <span class="ok-tag">仍可染色 · 过门槛</span>
+                  </template>
+                  <template x-if="!it.released && !it.dyeable">
+                    <span class="bad-tag">已不满足，出库将整单拒绝</span>
+                  </template>
+                </td>
+                <td class="row-act">
+                  {% if not is_supervisor %}
+                  <form x-show="o.draft" method="post"
+                        :action="'/outbound/orders/' + o.id + '/items/' + it.itemId + '/delete'"
+                        style="margin:0">
+                    <button type="submit" class="mini-btn"
+                            @click="return confirm('从本单移除 ' + it.code + '？')">移除</button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+
+        {% if not is_supervisor %}
+        <div x-show="o.draft" class="order-actions">
+          <form method="post" class="inline-form" :action="'/outbound/orders/' + o.id + '/header'">
+            <label>出库号 <input type="text" name="code" required maxlength="40" x-model="o.code"></label>
+            <label>计划米数
+              <input type="number" name="plannedMeters" step="0.01" min="0.01" required
+                     x-model.number="o.plannedMeters">
+            </label>
+            <button type="submit">保存单头</button>
+            <span class="cap-hint">上限（明细合计）<strong x-text="o.capacityMeters"></strong> m</span>
+          </form>
+          <form method="post" class="inline-form" :action="'/outbound/orders/' + o.id + '/items'">
+            <label>加挂同坊可染色缸
+              <select name="vat_id" required>
+                <option value="" disabled selected>选择…</option>
+                <template x-for="v in o.addableVats" :key="v.id">
+                  <option :value="v.id"
+                          x-text="v.code + ' · ' + v.dyeType + '（最新 ' + v.lastMeters + ' m / ' + (v.lastRedox === null ? '无电位' : v.lastRedox + ' mV') + '）'"></option>
+                </template>
+              </select>
+            </label>
+            <button type="submit" :disabled="!o.addableVats.length">加缸</button>
+          </form>
+          <form method="post" :action="'/outbound/orders/' + o.id + '/delete'" style="margin:0">
+            <button type="submit" class="mini-btn danger"
+                    @click="return confirm('删除组单中单据 ' + o.code + '？')">删单</button>
+          </form>
+        </div>
+        <p class="cap-hint" x-show="o.draft && o.addableVats.length === 0">
+          本坊可染色缸均已在本单或挂在其他未出库单中（同缸互斥）。
+        </p>
+        {% endif %}
+      </div>
+    </template>
+  </div>
+  <p class="empty-bay" x-show="orders.length === 0">暂无出库单。</p>
+</div>
+
+<script>
+  function outboundPage() {
+    return {
+      workshops: {{ workshops | tojson }},
+      counts: {{ counts_by_workshop | tojson }},
+      vatsByWs: {{ vats_by_workshop | tojson }},
+      heldIds: {{ held_vat_ids | tojson }},
+      orders: {{ orders | tojson }},
+      isSupervisor: {{ 'true' if is_supervisor else 'false' }},
+      selectedOrder: {{ selected_order if selected_order is not none else 'null' }},
+      ws: null,
+      selectedVats: [],
+      planned: '',
+      init() {
+        if (this.selectedOrder) {
+          const el = document.getElementById('order-' + this.selectedOrder);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      },
+      availableVats() {
+        if (!this.ws) return [];
+        return (this.vatsByWs[this.ws] || []).filter(v => !this.heldIds.includes(v.id));
+      },
+      selectedSum() {
+        let sum = 0;
+        for (const v of this.availableVats()) {
+          if (this.selectedVats.includes(v.id)) sum += Number(v.lastMeters);
+        }
+        return sum.toFixed(2);
+      },
+      validateCreate() {
+        if (!this.ws) { alert('请选择工坊'); return false; }
+        if (!this.selectedVats.length) { alert('至少挂一口同坊可染色缸'); return false; }
+        const p = Number(this.planned);
+        if (!(p > 0)) { alert('计划出库米数须为正数'); return false; }
+        if (p > Number(this.selectedSum())) {
+          alert('计划出库米数超过明细各缸最新浸染布米之和 ' + this.selectedSum() + ' m');
+          return false;
+        }
+        return true;
+      },
+      confirmShip(o) {
+        const bad = o.items.filter(it => !it.dyeable);
+        const msg = '逐缸复核可染色与电位门槛，任一缸失败将整单拒绝。确认出库 ' + o.code + '？';
+        if (bad.length) {
+          return confirm('注意：有 ' + bad.length + ' 口缸已不满足可染色口径，\n'
+            + '现在提交必然整单拒绝且不会半出库。仍要提交复核吗？\n\n' + msg);
+        }
+        return confirm(msg);
+      },
+    };
+  }
+</script>
+{% endblock %}
